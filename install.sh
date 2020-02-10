@@ -1,4 +1,6 @@
 #!/bin/bash
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
+export PATH
 
 cd $(cd "$(dirname "$0")"; pwd)
 #====================================================
@@ -24,7 +26,7 @@ OK="${Green}[OK]${Font}"
 Error="${Red}[错误]${Font}"
 
 # 版本
-shell_version="1.0.6"
+shell_version="1.0.8"
 shell_mode="None"
 version_cmp="/tmp/version_cmp.tmp"
 v2ray_conf_dir="/etc/v2ray"
@@ -42,8 +44,10 @@ v2ray_systemd_file="/etc/systemd/system/v2ray.service"
 v2ray_access_log="/var/log/v2ray/access.log"
 v2ray_error_log="/var/log/v2ray/error.log"
 amce_sh_file="/root/.acme.sh/acme.sh"
+ssl_update_file="/usr/bin/ssl_update.sh"
 nginx_version="1.16.1"
 openssl_version="1.1.1d"
+jemalloc_version="5.2.1"
 
 #生成伪装路径
 camouflage=`cat /dev/urandom | head -n 10 | md5sum | head -c 8`
@@ -72,10 +76,13 @@ check_system(){
     fi
 
     $INS install dbus
-    systemctl stop firewalld && systemctl disable firewalld
+
+    systemctl stop firewalld
+    systemctl disable firewalld
     echo -e "${OK} ${GreenBG} firewalld 已关闭 ${Font}"
 
-    systemctl stop ufw && systemctl disable ufw
+    systemctl stop ufw
+    systemctl disable ufw
     echo -e "${OK} ${GreenBG} ufw 已关闭 ${Font}"
 }
 
@@ -305,6 +312,8 @@ nginx_install(){
     judge "Nginx 下载"
     wget -nc https://www.openssl.org/source/openssl-${openssl_version}.tar.gz -P ${nginx_openssl_src}
     judge "openssl 下载"
+    wget -nc https://github.com/jemalloc/jemalloc/releases/download/${jemalloc_version}/jemalloc-${jemalloc_version}.tar.bz2 -P ${nginx_openssl_src}
+    judge "jemalloc 下载"
 
     cd ${nginx_openssl_src}
 
@@ -314,12 +323,27 @@ nginx_install(){
     [[ -d openssl-"$openssl_version" ]] && rm -rf openssl-"$openssl_version"
     tar -zxvf openssl-"$openssl_version".tar.gz
 
+    [[ -d jemalloc-"${jemalloc_version}" ]] && rm -rf jemalloc-"${jemalloc_version}"
+    tar -xvf jemalloc-"${jemalloc_version}".tar.bz2
+
     [[ -d "$nginx_dir" ]] && rm -rf ${nginx_dir}
+
+
+    echo -e "${OK} ${GreenBG} 即将开始编译安装 jemalloc ${Font}"
+    sleep 2
+
+    cd jemalloc-${jemalloc_version}
+    ./configure
+    judge "编译检查"
+    make && make install
+    judge "jemalloc 编译安装"
+    echo '/usr/local/lib' > /etc/ld.so.conf.d/local.conf
+    ldconfig
 
     echo -e "${OK} ${GreenBG} 即将开始编译安装 Nginx, 过程稍久，请耐心等待 ${Font}"
     sleep 4
 
-    cd nginx-${nginx_version}
+    cd ../nginx-${nginx_version}
     ./configure --prefix="${nginx_dir}"                         \
             --with-http_ssl_module                              \
             --with-http_gzip_static_module                      \
@@ -330,6 +354,7 @@ nginx_install(){
             --with-http_mp4_module                              \
             --with-http_secure_link_module                      \
             --with-http_v2_module                               \
+            --with-ld-opt="-ljemalloc"                          \
             --with-openssl=../openssl-"$openssl_version"
     judge "编译检查"
     make && make install
@@ -344,8 +369,8 @@ nginx_install(){
 
 
     # 删除临时文件
-    rm -rf nginx-"${nginx_version}"
-    rm -rf openssl-"${openssl_version}"
+    rm -rf ../nginx-"${nginx_version}"
+    rm -rf ../openssl-"${openssl_version}"
     rm -rf ../nginx-"${nginx_version}".tar.gz
     rm -rf ../openssl-"${openssl_version}".tar.gz
 
@@ -405,29 +430,29 @@ port_exist_check(){
     fi
 }
 acme(){
-    ~/.acme.sh/acme.sh --issue -d ${domain} --standalone -k ec-256 --force --test
+    $HOME/.acme.sh/acme.sh --issue -d ${domain} --standalone -k ec-256 --force --test
     if [[ $? -eq 0 ]];then
         echo -e "${OK} ${GreenBG} SSL 证书测试签发成功，开始正式签发 ${Font}"
         sleep 2
     else
         echo -e "${Error} ${RedBG} SSL 证书测试签发失败 ${Font}"
-        rm -rf "~/.acme.sh/${domain}_ecc/${domain}.key" && rm -rf "~/.acme.sh/${domain}_ecc/${domain}.cer"
+        rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.key" && rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.cer"
         exit 1
     fi
 
-    ~/.acme.sh/acme.sh --issue -d ${domain} --standalone -k ec-256 --force
+    $HOME/.acme.sh/acme.sh --issue -d ${domain} --standalone -k ec-256 --force
     if [[ $? -eq 0 ]];then
         echo -e "${OK} ${GreenBG} SSL 证书生成成功 ${Font}"
         sleep 2
         mkdir /data
-        ~/.acme.sh/acme.sh --installcert -d ${domain} --fullchainpath /data/v2ray.crt --keypath /data/v2ray.key --ecc
+        $HOME/.acme.sh/acme.sh --installcert -d ${domain} --fullchainpath /data/v2ray.crt --keypath /data/v2ray.key --ecc
         if [[ $? -eq 0 ]];then
         echo -e "${OK} ${GreenBG} 证书配置成功 ${Font}"
         sleep 2
         fi
     else
         echo -e "${Error} ${RedBG} SSL 证书生成失败 ${Font}"
-        rm -rf "~/.acme.sh/${domain}_ecc/${domain}.key" && rm -rf "~/.acme.sh/${domain}_ecc/${domain}.cer"
+        rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.key" && rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.cer"
         exit 1
     fi
 }
@@ -454,7 +479,7 @@ nginx_conf_add(){
         listen 443 ssl http2;
         ssl_certificate       /data/v2ray.crt;
         ssl_certificate_key   /data/v2ray.key;
-        ssl_protocols         TLSv1.2 TLSv1.3;
+        ssl_protocols         TLSv1.3;
         ssl_ciphers           TLS13-AES-256-GCM-SHA384:TLS13-CHACHA20-POLY1305-SHA256:TLS13-AES-128-GCM-SHA256:TLS13-AES-128-CCM-8-SHA256:TLS13-AES-128-CCM-SHA256:EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+ECDSA+AES128:EECDH+aRSA+AES128:RSA+AES128:EECDH+ECDSA+AES256:EECDH+aRSA+AES256:RSA+AES256:EECDH+ECDSA+3DES:EECDH+aRSA+3DES:RSA+3DES:!MD5;
         server_name           serveraddr.com;
         index index.html index.htm;
@@ -465,6 +490,8 @@ nginx_conf_add(){
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10000;
         proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$http_host;
@@ -529,12 +556,15 @@ nginx_process_disabled(){
 #    judge "rc.local 配置"
 #}
 acme_cron_update(){
+    [ ! -f ${ssl_update_file} ] && wget -P /usr/bin "https://raw.githubusercontent.com/wulabing/V2Ray_ws-tls_bash_onekey/dev/ssl_update.sh"
     if [[ "${ID}" == "centos" ]];then
-        sed -i "/acme.sh/c 0 3 * * 0 \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
-        &> /dev/null" /var/spool/cron/root
+#        sed -i "/acme.sh/c 0 3 * * 0 \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
+#        &> /dev/null" /var/spool/cron/root
+        sed -i "/acme.sh/c 0 3 * * 0 bash ${ssl_update_file}" /var/spool/cron/root
     else
-        sed -i "/acme.sh/c 0 3 * * 0 \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
-        &> /dev/null" /var/spool/cron/crontabs/root
+#        sed -i "/acme.sh/c 0 3 * * 0 \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
+#        &> /dev/null" /var/spool/cron/crontabs/root
+        sed -i "/acme.sh/c 0 3 * * 0 bash ${ssl_update_file}" /var/spool/cron/crontabs/root
     fi
     judge "cron 计划任务更新"
 }
@@ -576,9 +606,9 @@ EOF
 
 vmess_qr_link_image(){
     vmess_link="vmess://$(cat $v2ray_qr_config_file | base64 -w 0)"
-    echo -e "${Red} URL导入链接:${vmess_link} ${Font}" >> ${v2ray_info_file}
     echo -e "${Red} 二维码: ${Font}" >> ${v2ray_info_file}
     echo -n "${vmess_link}"| qrencode -o - -t utf8 >> ${v2ray_info_file}
+    echo -e "${Red} URL导入链接:${vmess_link} ${Font}" >> ${v2ray_info_file}
 }
 
 info_extraction(){
@@ -601,11 +631,25 @@ show_information(){
     cat ${v2ray_info_file}
 }
 ssl_judge_and_install(){
-#    if [[ -f "/data/v2ray.key" && -f "/data/v2ray.crt" ]];then
-#        echo "证书文件已存在"
-    if [[ -f "~/.acme.sh/${domain}_ecc/${domain}.key" && -f "~/.acme.sh/${domain}_ecc/${domain}.cer" ]];then
+    if [[ -f "/data/v2ray.key" || -f "/data/v2ray.crt" ]];then
+        echo "/data 目录下证书文件已存在"
+        echo -e "${OK} ${GreenBG} 是否删除 [Y/N]? ${Font}"
+        read -r ssl_delete
+        case $ssl_delete in
+            [yY][eE][sS]|[yY])
+                rm -rf /data/*
+                echo -e "${OK} ${GreenBG} 已删除 ${Font}"
+                ;;
+            *)
+                ;;
+        esac
+    fi
+
+    if [[ -f "/data/v2ray.key" || -f "/data/v2ray.crt" ]];then
         echo "证书文件已存在"
-        ~/.acme.sh/acme.sh --installcert -d ${domain} --fullchainpath /data/v2ray.crt --keypath /data/v2ray.key --ecc
+    elif [[ -f "$HOME/.acme.sh/${domain}_ecc/${domain}.key" && -f "$HOME/.acme.sh/${domain}_ecc/${domain}.cer" ]];then
+        echo "证书文件已存在"
+        $HOME/.acme.sh/acme.sh --installcert -d ${domain} --fullchainpath /data/v2ray.crt --keypath /data/v2ray.key --ecc
         judge "证书应用"
     else
         ssl_install
@@ -669,10 +713,12 @@ ssl_update_manuel(){
     [ -f ${amce_sh_file} ] && "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" || echo -e  "${RedBG}证书签发工具不存在，请确认你是否使用了自己的证书${Font}"
 }
 bbr_boost_sh(){
+    [ -f "tcp.sh" ] && rm -rf ./tcp.sh
     wget -N --no-check-certificate "https://github.com/ylx2016/Linux-NetSpeed/releases/download/sh/tcp.sh" && chmod +x tcp.sh && ./tcp.sh
 }
 mtproxy_sh(){
-    wget -N --no-check-certificate https://github.com/whunt1/onekeymakemtg/raw/master/mtproxy_go.sh && chmod +x mtproxy_go.sh && bash mtproxy_go.sh
+    [ -f "mtproxy_go.sh" ] && rm -rf ./mtproxy_go.sh
+    wget -N --no-check-certificate https://github.com/whunt1/onekeymakemtg/raw/master/mtproxy_go.sh && chmod +x mtproxy_go.sh && ./mtproxy_go.sh
 }
 
 uninstall_all(){
@@ -680,7 +726,19 @@ uninstall_all(){
     [[ -f $nginx_systemd_file ]] && rm -f $nginx_systemd_file
     [[ -f $v2ray_systemd_file ]] && rm -f $v2ray_systemd_file
     [[ -d $v2ray_bin_file ]] && rm -rf $v2ray_bin_file
-    [[ -d $nginx_dir ]] && rm -rf $nginx_dir
+    if [[ -d $nginx_dir ]]
+    then
+        echo -e "${OK} ${Green} 是否卸载 Nginx [Y/N]? ${Font}"
+        read -r uninstall_nginx
+        case $uninstall_nginx in
+            [yY][eE][sS]|[yY])
+                rm -rf $nginx_dir
+                echo -e "${OK} ${Green} 已卸载 Nginx ${Font}"
+                ;;
+            *)
+                ;;
+        esac
+    fi
     [[ -d $v2ray_conf_dir ]] && rm -rf $v2ray_conf_dir
     [[ -d $web_dir ]] && rm -rf $web_dir
     systemctl daemon-reload
