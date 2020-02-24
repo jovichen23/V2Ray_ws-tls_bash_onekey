@@ -26,7 +26,7 @@ OK="${Green}[OK]${Font}"
 Error="${Red}[错误]${Font}"
 
 # 版本
-shell_version="1.1.2"
+shell_version="1.1.3.2"
 shell_mode="None"
 github_branch="master"
 version_cmp="/tmp/version_cmp.tmp"
@@ -37,7 +37,7 @@ nginx_conf="${nginx_conf_dir}/v2ray.conf"
 nginx_dir="/etc/nginx"
 web_dir="/home/wwwroot"
 nginx_openssl_src="/usr/local/src"
-v2ray_bin_file="/usr/bin/v2ray"
+v2ray_bin_dir="/usr/bin/v2ray"
 v2ray_info_file="$HOME/v2ray_info.inf"
 v2ray_qr_config_file="/usr/local/vmess_qr.json"
 nginx_systemd_file="/etc/systemd/system/nginx.service"
@@ -252,7 +252,7 @@ modify_alterid(){
     sed -i "/\"alterId\"/c \\\t  \"alterId\":${alterID}" ${v2ray_conf}
     judge "V2ray alterid 修改"
     [ -f ${v2ray_qr_config_file} ] && sed -i "/\"aid\"/c \\  \"aid\": \"${alterID}\"," ${v2ray_qr_config_file}
-    echo -e "${GreenBG} alterID:${alterID} ${Font}"
+    echo -e "${OK} ${GreenBG} alterID:${alterID} ${Font}"
 }
 modify_inbound_port(){
     if [[ "on" == "$old_config_status" ]]
@@ -277,7 +277,7 @@ modify_UUID(){
     sed -i "/\"id\"/c \\\t  \"id\":\"${UUID}\"," ${v2ray_conf}
     judge "V2ray UUID 修改"
     [ -f ${v2ray_qr_config_file} ] && sed -i "/\"id\"/c \\  \"id\": \"${UUID}\"," ${v2ray_qr_config_file}
-    echo -e "${GreenBG} UUID:${UUID} ${Font}"
+    echo -e "${OK} ${GreenBG} UUID:${UUID} ${Font}"
 }
 modify_nginx_port(){
     if [[ "on" == "$old_config_status" ]]
@@ -287,7 +287,7 @@ modify_nginx_port(){
     sed -i "/ssl http2;$/c \\\tlisten ${port} ssl http2;" ${nginx_conf}
     judge "V2ray port 修改"
     [ -f ${v2ray_qr_config_file} ] && sed -i "/\"port\"/c \\  \"port\": \"${port}\"," ${v2ray_qr_config_file}
-    echo -e "${GreenBG} 端口号:${port} ${Font}"
+    echo -e "${OK} ${GreenBG} 端口号:${port} ${Font}"
 }
 modify_nginx_other(){
     sed -i "/server_name/c \\\tserver_name ${domain};" ${nginx_conf}
@@ -437,7 +437,7 @@ domain_check(){
         echo -e "${OK} ${GreenBG} 域名dns解析IP 与 本机IP 匹配 ${Font}"
         sleep 2
     else
-        echo -e "${Error} ${RedBG} 请确保域名添加了正确的 A 记录，否则将无法正常使用 V2ray"
+        echo -e "${Error} ${RedBG} 请确保域名添加了正确的 A 记录，否则将无法正常使用 V2ray ${Font}"
         echo -e "${Error} ${RedBG} 域名dns解析IP 与 本机IP 不匹配 是否继续安装？（y/n）${Font}" && read install
         case $install in
         [yY][eE][sS]|[yY])
@@ -467,18 +467,16 @@ port_exist_check(){
     fi
 }
 acme(){
-#    $HOME/.acme.sh/acme.sh --issue -d ${domain} --standalone -k ec-256 --force --test
-#    if [[ $? -eq 0 ]];then
-#        echo -e "${OK} ${GreenBG} SSL 证书测试签发成功，开始正式签发 ${Font}"
-#        rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.key"
-#        rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.cer"
-#        sleep 2
-#    else
-#        echo -e "${Error} ${RedBG} SSL 证书测试签发失败 ${Font}"
-#        rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.key"
-#        rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.cer"
-#        exit 1
-#    fi
+    $HOME/.acme.sh/acme.sh --issue -d ${domain} --standalone -k ec-256 --force --test
+    if [[ $? -eq 0 ]];then
+        echo -e "${OK} ${GreenBG} SSL 证书测试签发成功，开始正式签发 ${Font}"
+        rm -rf "$HOME/.acme.sh/${domain}_ecc"
+        sleep 2
+    else
+        echo -e "${Error} ${RedBG} SSL 证书测试签发失败 ${Font}"
+        rm -rf "$HOME/.acme.sh/${domain}_ecc"
+        exit 1
+    fi
 
     $HOME/.acme.sh/acme.sh --issue -d ${domain} --standalone -k ec-256 --force
     if [[ $? -eq 0 ]];then
@@ -492,7 +490,7 @@ acme(){
         fi
     else
         echo -e "${Error} ${RedBG} SSL 证书生成失败 ${Font}"
-        rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.key" && rm -rf "$HOME/.acme.sh/${domain}_ecc/${domain}.cer"
+        rm -rf "$HOME/.acme.sh/${domain}_ecc"
         exit 1
     fi
 }
@@ -515,17 +513,17 @@ v2ray_conf_add_h2(){
 old_config_exist_check(){
     if [[ -f $v2ray_qr_config_file ]]
     then
-        echo -e "${OK} ${Green} 检测到旧配置文件，是否读取旧文件配置 [Y/N]? ${Font}"
+        echo -e "${OK} ${GreenBG} 检测到旧配置文件，是否读取旧文件配置 [Y/N]? ${Font}"
         read -r ssl_delete
         case $ssl_delete in
             [yY][eE][sS]|[yY])
-                echo -e "${OK} ${Green} 已保留旧配置  ${Font}"
+                echo -e "${OK} ${GreenBG} 已保留旧配置  ${Font}"
                 old_config_status="on"
                 port=$(info_extraction '\"port\"')
                 ;;
             *)
                 rm -rf $v2ray_qr_config_file
-                echo -e "${OK} ${Green} 已删除旧配置  ${Font}"
+                echo -e "${OK} ${GreenBG} 已删除旧配置  ${Font}"
                 ;;
         esac
     fi
@@ -673,7 +671,7 @@ info_extraction(){
     grep $1 $v2ray_qr_config_file | awk -F '"' '{print $4}'
 }
 basic_information(){
-    echo -e "${OK} ${Green} V2ray+ws+tls 安装成功" > ${v2ray_info_file}
+    echo -e "${OK} ${GreenBG} V2ray+ws+tls 安装成功" > ${v2ray_info_file}
     echo -e "${Red} V2ray 配置信息 ${Font}" >> ${v2ray_info_file}
     echo -e "${Red} 地址（address）:${Font} $(info_extraction '\"add\"') " >> ${v2ray_info_file}
     echo -e "${Red} 端口（port）：${Font} $(info_extraction '\"port\"') " >> ${v2ray_info_file}
@@ -787,7 +785,7 @@ uninstall_all(){
     stop_process_systemd
     [[ -f $nginx_systemd_file ]] && rm -f $nginx_systemd_file
     [[ -f $v2ray_systemd_file ]] && rm -f $v2ray_systemd_file
-    [[ -d $v2ray_bin_file ]] && rm -rf $v2ray_bin_file
+    [[ -d $v2ray_bin_dir ]] && rm -rf $v2ray_bin_dir
     if [[ -d $nginx_dir ]]
     then
         echo -e "${OK} ${Green} 是否卸载 Nginx [Y/N]? ${Font}"
@@ -806,8 +804,13 @@ uninstall_all(){
     systemctl daemon-reload
     echo -e "${OK} ${GreenBG} 已卸载，SSL证书文件已保留 ${Font}"
 }
+delete_tls_key_and_crt(){
+   [[ -f $HOME/.acme.sh/acme.sh ]] && /root/.acme.sh/acme.sh uninstall > /dev/null 2>&1
+   [[ -d $HOME/.acme.sh ]] && rm -rf "$HOME/.acme.sh"
+   echo -e "${OK} ${GreenBG} 已清空证书遗留文件 ${Font}"
+}
 judge_mode(){
-    if [ -f $v2ray_qr_config_file ]
+    if [ -f $v2ray_bin_dir/v2ray ]
     then
         if [[ -n $(grep "ws" $v2ray_qr_config_file) ]]
         then
@@ -873,19 +876,19 @@ update_sh(){
     echo "$shell_version" >> $version_cmp
     if [[ "$shell_version" < "$(sort -rV $version_cmp | head -1)" ]]
     then
-        echo -e "${OK} ${Green} 存在新版本，是否更新 [Y/N]? ${Font}"
+        echo -e "${OK} ${GreenBG} 存在新版本，是否更新 [Y/N]? ${Font}"
         read -r update_confirm
         case $update_confirm in
             [yY][eE][sS]|[yY])
                 wget -N --no-check-certificate https://raw.githubusercontent.com/wulabing/V2Ray_ws-tls_bash_onekey/${github_branch}/install.sh
-                echo -e "${OK} ${Green} 更新完成 ${Font}"
+                echo -e "${OK} ${GreenBG} 更新完成 ${Font}"
                 exit 0
                 ;;
             *)
                 ;;
         esac
     else
-        echo -e "${OK} ${Green} 当前版本为最新版本 ${Font}"
+        echo -e "${OK} ${GreenBG} 当前版本为最新版本 ${Font}"
     fi
 
 }
@@ -941,7 +944,8 @@ menu(){
     echo -e "${Green}13.${Font} 证书 有效期更新"
     echo -e "${Green}14.${Font} 卸载 V2Ray"
     echo -e "${Green}15.${Font} 更新 证书crontab计划任务"
-    echo -e "${Green}16.${Font} 退出 \n"
+    echo -e "${Green}16.${Font} 清空 证书遗留文件"
+    echo -e "${Green}17.${Font} 退出 \n"
 
     read -p "请输入数字：" menu_num
     case $menu_num in
@@ -1012,6 +1016,9 @@ menu(){
           acme_cron_update
           ;;
         16)
+          delete_tls_key_and_crt
+          ;;
+        17)
           exit 0
           ;;
         *)
